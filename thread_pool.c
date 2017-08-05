@@ -182,8 +182,15 @@ static void *thread_execute(void *arg)
 
 	for(;;) {
 
-		/* 等待队列任务的到来 */
 		pthread_mutex_lock(&tp_p->lock);
+
+		/* 线程池已关闭 */
+		if(tp_p->status<=0) {
+			pthread_mutex_unlock(&tp_p->lock);
+			break;
+		}
+
+		/* 等待队列任务的到来 */
 		while(tp_p->queue_rear == tp_p->queue_front) {
 			pthread_cond_wait(&tp_p->wakeup, &tp_p->lock);
 
