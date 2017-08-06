@@ -27,6 +27,7 @@ typedef struct thread_pool_t {
 	int status; /* 线程池状态：0 关闭; 1 开启*/
 
 	pthread_mutex_t lock; /* 保护线程池临界资源的锁 */
+	pthread_mutex_t newtasklock; /* 是否允许添加新任务，作用于令旧任务执行优先级大于新任务添加 */
 	pthread_cond_t wakeup; /* 令线程休眠等待任务或唤醒执行任务的条件变量 */
 } thread_pool_t;
 

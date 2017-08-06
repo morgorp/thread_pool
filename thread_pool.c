@@ -9,6 +9,7 @@
 
 #include "thread_pool.h"
 #include <stdlib.h>
+#include <unistd.h>
 
 /**
  * Function: thread_pool_init
@@ -42,6 +43,7 @@ void thread_pool_init
 	tp_p->status = 1;
 
 	pthread_mutex_init(&tp_p->lock, NULL);
+	pthread_mutex_init(&tp_p->newtasklock, NULL);
 	pthread_cond_init(&tp_p->wakeup, NULL);
 }
 
@@ -52,7 +54,7 @@ void thread_pool_init
  * Input:
  *		tt_p 所要初始化的任务
  *		func 任务所要执行的函数
- *		argv 函数的参数
+ *		arg 函数的参数
  * Ouput:
  * Return:
  */
@@ -109,6 +111,7 @@ void thread_pool_shutdown(thread_pool_t *tp_p, int now)
 
 	/* 销毁锁 */
 	pthread_cond_destroy(&tp_p->wakeup);
+	pthread_mutex_destroy(&tp_p->newtasklock);
 	pthread_mutex_destroy(&tp_p->lock);
 }
 
@@ -130,6 +133,9 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 		return -1;
 	}
 
+	pthread_mutex_lock(&tp_p->newtasklock); // 如果还不允许添加新任务则阻塞
+	pthread_mutex_unlock(&tp_p->newtasklock);
+
 	pthread_mutex_lock(&tp_p->lock);
 
 	/* 线程池已处于关闭状态 */
@@ -137,10 +143,13 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 		pthread_mutex_unlock(&tp_p->lock);
 		return -1;
 	}
-	
+
 	/* 如果所有已创建的线程都在忙碌且线程池还未满则创建一个新的线程 */
 	if(tp_p->running_cnt>=tp_p->thread_num && tp_p->thread_num<tp_p->pool_size) {
-		pthread_create(&tp_p->pool_thread[tp_p->thread_num++], NULL, thread_execute, tp_p);
+		int thread_num = tp_p->thread_num++;
+		pthread_mutex_unlock(&tp_p->lock);
+		pthread_create(&tp_p->pool_thread[thread_num], NULL, thread_execute, tp_p);
+		pthread_mutex_lock(&tp_p->lock);
 	}
 
 	/* 任务入队 */
@@ -153,11 +162,20 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 	tp_p->work_queue[tp_p->queue_rear] = *tt_p; // 入队
 	tp_p->queue_rear = nrear;
 
-	pthread_mutex_unlock(&tp_p->lock);
-	
-	/* 唤醒线程去执行任务 */
-	pthread_cond_signal(&tp_p->wakeup);
-	
+	/* 存在空闲的睡眠线程，唤醒线程去执行任务 */
+	if(tp_p->running_cnt < tp_p->thread_num) {
+		pthread_mutex_unlock(&tp_p->lock);
+
+		pthread_cond_signal(&tp_p->wakeup); // 唤醒线程
+		
+		/* 轮询直到任务真正被唤醒的线程从队列取出，这儿用轮询因为个人觉得等待时间比较短没必要用条件变量增加开销 */
+		pthread_mutex_lock(&tp_p->newtasklock); // 还未确定任务是否被新线程从队列取出，暂时不允许添加新任务
+		while(tp_p->queue_front != tp_p->queue_rear) {} // 读取这两个临界资源不必用互斥量保护，不影响结果
+		pthread_mutex_unlock(&tp_p->newtasklock); // 允许添加新任务了
+	} else {
+		pthread_mutex_unlock(&tp_p->lock);
+	}
+
 	return 0;
 }
 
@@ -184,8 +202,8 @@ static void *thread_execute(void *arg)
 
 		pthread_mutex_lock(&tp_p->lock);
 
-		/* 线程池已关闭 */
-		if(tp_p->status<=0) {
+		/* 线程池已关闭且队列中没有未执行的任务 */
+		if(tp_p->status<=0 && tp_p->queue_rear==tp_p->queue_front) {
 			pthread_mutex_unlock(&tp_p->lock);
 			break;
 		}
@@ -208,7 +226,9 @@ static void *thread_execute(void *arg)
 		/* 执行任务 */
 		++tp_p->running_cnt; // 正在执行任务的线程数+1
 		pthread_mutex_unlock(&tp_p->lock);
+
 		task.func(task.argv); // 调用执行任务的函数
+
 		pthread_mutex_lock(&tp_p->lock);
 		--tp_p->running_cnt; // 正在执行任务的线程数-1
 		pthread_mutex_unlock(&tp_p->lock);
