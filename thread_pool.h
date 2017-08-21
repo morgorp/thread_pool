@@ -21,8 +21,8 @@ typedef struct thread_pool_t {
 
 	struct thread_task_t *work_queue; /* 缓存未被处理任务的循环队列 */
 	int queue_size; /* 队列大小 */
-	int queue_front; /* 队列头指针 */
-	int queue_rear; /* 队列尾指针 */
+	volatile int queue_front; /* 队列头指针 */
+	volatile int queue_rear; /* 队列尾指针 */
 
 	int status; /* 线程池状态：0 关闭; 1 开启*/
 

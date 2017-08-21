@@ -134,9 +134,10 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 	}
 
 	pthread_mutex_lock(&tp_p->newtasklock); // 如果还不允许添加新任务则阻塞
-	pthread_mutex_unlock(&tp_p->newtasklock);
-
+	
 	pthread_mutex_lock(&tp_p->lock);
+	
+	pthread_mutex_unlock(&tp_p->newtasklock);
 
 	/* 线程池已处于关闭状态 */
 	if(tp_p->status <= 0) {
