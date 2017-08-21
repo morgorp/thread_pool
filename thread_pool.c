@@ -171,7 +171,9 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 		
 		/* 轮询直到任务真正被唤醒的线程从队列取出，这儿用轮询因为个人觉得等待时间比较短没必要用条件变量增加开销 */
 		pthread_mutex_lock(&tp_p->newtasklock); // 还未确定任务是否被新线程从队列取出，暂时不允许添加新任务
-		while(tp_p->queue_front != tp_p->queue_rear) {} // 读取这两个临界资源不必用互斥量保护，不影响结果
+		
+		/* 读取这三个临界资源不必用互斥量保护不影响结果的正确性，此外三个变量均声明为volatile */
+		while(tp_p->queue_front!=tp_p->queue_rear && tp_p->status!=0) {} // 轮询直到线程池关闭或任务被取出
 		pthread_mutex_unlock(&tp_p->newtasklock); // 允许添加新任务了
 	} else {
 		pthread_mutex_unlock(&tp_p->lock);
