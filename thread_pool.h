@@ -24,7 +24,7 @@ typedef struct thread_pool_t {
 	volatile int queue_front; /* 队列头指针 */
 	volatile int queue_rear; /* 队列尾指针 */
 
-	int status; /* 线程池状态：0 关闭; 1 开启*/
+	volatile int status; /* 线程池状态：0 关闭; 1 开启*/
 
 	pthread_mutex_t lock; /* 保护线程池临界资源的锁 */
 	pthread_mutex_t newtasklock; /* 是否允许添加新任务，作用于令旧任务执行优先级大于新任务添加 */
