@@ -133,10 +133,10 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 		return -1;
 	}
 
-	pthread_mutex_lock(&tp_p->newtasklock); // 如果还不允许添加新任务则阻塞
-	
+	/* 先锁lock再锁newtasklock */
 	pthread_mutex_lock(&tp_p->lock);
-	
+
+	pthread_mutex_lock(&tp_p->newtasklock); // 如果还不允许添加新任务则阻塞	
 	pthread_mutex_unlock(&tp_p->newtasklock);
 
 	/* 线程池已处于关闭状态 */
@@ -165,13 +165,13 @@ int thread_pool_execute(thread_pool_t *tp_p, thread_task_t *tt_p)
 
 	/* 存在空闲的睡眠线程，唤醒线程去执行任务 */
 	if(tp_p->running_cnt < tp_p->thread_num) {
-		pthread_mutex_unlock(&tp_p->lock);
-
-		pthread_cond_signal(&tp_p->wakeup); // 唤醒线程
 		
 		/* 轮询直到任务真正被唤醒的线程从队列取出，这儿用轮询因为个人觉得等待时间比较短没必要用条件变量增加开销 */
 		pthread_mutex_lock(&tp_p->newtasklock); // 还未确定任务是否被新线程从队列取出，暂时不允许添加新任务
-		
+
+		pthread_mutex_unlock(&tp_p->lock);
+		pthread_cond_signal(&tp_p->wakeup); // 唤醒线程
+
 		/* 读取这三个临界资源不必用互斥量保护不影响结果的正确性，此外三个变量均声明为volatile */
 		while(tp_p->queue_front!=tp_p->queue_rear && tp_p->status!=0) {} // 轮询直到线程池关闭或任务被取出
 		pthread_mutex_unlock(&tp_p->newtasklock); // 允许添加新任务了
