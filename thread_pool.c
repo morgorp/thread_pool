@@ -92,6 +92,7 @@ void thread_pool_shutdown(thread_pool_t *tp_p, int now)
 	pthread_mutex_lock(&tp_p->lock);
 	tp_p->status = 0;
 	pthread_mutex_unlock(&tp_p->lock);
+	pthread_cond_broadcast(&tp_p->wakeup);
 
 	/* 立即关闭，取消所有线程 */
 	if(now != 0) {
