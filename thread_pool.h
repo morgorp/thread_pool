@@ -1,6 +1,6 @@
 /**
  * Copyright (C), 2017, progrom.
- * File name: thread_pool.c
+ * File name: thread_pool.h
  * Author: progrom
  * Version: 0.01
  * Date: 20170804 
